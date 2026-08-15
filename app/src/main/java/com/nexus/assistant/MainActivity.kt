@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.material3.Button
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -69,7 +70,8 @@ class MainActivity : ComponentActivity() {
                 // Only create the NexusViewModel if core app components initialized successfully.
                 val canCreateViewModel = app.aiEngine != null && app.modelManager != null && app.memoryRepository != null && app.toolRouter != null && app.agentPlanner != null
 
-                val viewModel: NexusViewModel? = if (canCreateViewModel) {
+                // Rename the composable viewModel local to avoid shadowing the viewModel() function
+                val nexusViewModel: NexusViewModel? = if (canCreateViewModel) {
                     viewModel<NexusViewModel>(
                         factory = NexusViewModelFactory(
                             app.aiEngine!!, app.modelManager!!, app.memoryRepository!!,
@@ -80,16 +82,16 @@ class MainActivity : ComponentActivity() {
 
                 // Reflect real connectivity, not a guess.
                 LaunchedEffect(Unit) {
-                    viewModel?.setNetworkStatus(currentNetworkStatus())
+                    nexusViewModel?.setNetworkStatus(currentNetworkStatus())
                 }
 
                 // Speak NEXUS's replies aloud if TTS is enabled - the last
                 // NEXUS message is watched and spoken once, not re-spoken
                 // on every recomposition.
                 var lastSpokenId by remember { mutableStateOf<Long?>(null) }
-                LaunchedEffect(viewModel?.messages?.size ?: 0) {
+                LaunchedEffect(nexusViewModel?.messages?.size ?: 0) {
                     if (app.voiceSettings?.ttsEnabled != true) return@LaunchedEffect
-                    val last = viewModel?.messages?.lastOrNull()
+                    val last = nexusViewModel?.messages?.lastOrNull()
                     if (last != null && last.sender == com.nexus.assistant.ui.Sender.NEXUS && last.id != lastSpokenId) {
                         lastSpokenId = last.id
                         ttsManager?.speak(last.text)
@@ -102,7 +104,7 @@ class MainActivity : ComponentActivity() {
                     if (granted) {
                         isListening = true
                         speechRecognizer?.startListening(
-                            onResult = { text -> isListening = false; viewModel?.onVoiceResult(text) },
+                            onResult = { text -> isListening = false; nexusViewModel?.onVoiceResult(text) },
                             onError = { isListening = false },
                             onListeningStateChanged = { listening -> isListening = listening }
                         )
@@ -120,7 +122,7 @@ class MainActivity : ComponentActivity() {
                     if (hasPermission) {
                         isListening = true
                         speechRecognizer?.startListening(
-                            onResult = { text -> isListening = false; viewModel?.onVoiceResult(text) },
+                            onResult = { text -> isListening = false; nexusViewModel?.onVoiceResult(text) },
                             onError = { isListening = false },
                             onListeningStateChanged = { listening -> isListening = listening }
                         )
@@ -129,7 +131,7 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                if (viewModel == null) {
+                if (nexusViewModel == null) {
                     // Core initialization failed — show a simple, non-crashing fallback UI.
                     Column(
                         modifier = Modifier.fillMaxSize().padding(24.dp),
@@ -145,7 +147,7 @@ class MainActivity : ComponentActivity() {
                 } else {
                     when (screen) {
                         Screen.CHAT -> MainScreen(
-                            viewModel = viewModel,
+                            viewModel = nexusViewModel,
                             onOpenSettings = { screen = Screen.SETTINGS },
                             onMicClick = { onMicClick() },
                             isListening = isListening
