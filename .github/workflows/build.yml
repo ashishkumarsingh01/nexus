@@ -1,0 +1,44 @@
+name: Build NEXUS APK
+
+# Runs entirely on GitHub's servers. Push from your phone (GitHub app, or
+# the mobile web editor) and this builds the APK for you — no Android
+# Studio, no local Gradle, no local SDK needed on your device.
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch: {}   # lets you trigger a build manually from the Actions tab
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle 8.7
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      # No gradlew/wrapper jar is committed to this repo (it's a binary file
+      # that can't be produced offline). This step installs Gradle itself on
+      # the runner instead, so we invoke `gradle` directly rather than
+      # `./gradlew`.
+      - name: Build debug APK
+        run: gradle assembleDebug --no-daemon --stacktrace
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexus-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error

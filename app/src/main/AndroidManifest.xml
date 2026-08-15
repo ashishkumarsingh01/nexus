@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+        PHASE 1: no runtime permissions requested yet.
+        Permissions are added incrementally in later phases, each tied to a
+        specific tool in PermissionManager, never bundled speculatively:
+          Phase 6 (device tools):   no dangerous permission needed for battery/storage/time
+          Phase 7 (file tools):     READ_MEDIA_* / SAF document access
+          Phase 8 (voice):          RECORD_AUDIO
+          Phase 10 (app control):   QUERY_ALL_PACKAGES is intentionally avoided;
+                                     we resolve target apps via explicit package/intent lookups
+          Notification tool:        BIND_NOTIFICATION_LISTENER_SERVICE (special access, user-granted in Settings)
+    -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- INTERNET is declared only so the OPTIONAL online mode (Phase 12) can work.
+         The app functions fully without ever using it; NetworkStatusProvider
+         reports connectivity but no tool calls out unless the user enables online mode. -->
+
+    <!-- PHASE 8: offline speech recognition (Android SpeechRecognizer, on-device where supported). -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+    <!-- Communication tool (Phase 10/11's DANGEROUS actions) - each still
+         requires explicit in-app confirmation every time regardless of grant. -->
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+    <uses-permission android:name="android.permission.SEND_SMS" />
+    <uses-permission android:name="android.permission.CALL_PHONE" />
+
+    <!-- Notification tool: special access, granted by the user in system Settings,
+         not a normal runtime permission - no manifest <uses-permission> applies here.
+         The listener service below is what that special access enables. -->
+
+    <!-- Package-visibility allow-list for AppTool. Deliberately NOT
+         QUERY_ALL_PACKAGES - only these specific, named apps can be checked
+         or launched, per the spec's "safe application launching" requirement. -->
+    <queries>
+        <package android:name="com.google.android.youtube" />
+        <package android:name="com.android.chrome" />
+        <package android:name="com.whatsapp" />
+        <package android:name="com.google.android.gm" />
+        <package android:name="com.google.android.apps.maps" />
+        <package android:name="com.spotify.music" />
+        <package android:name="com.android.camera" />
+        <package android:name="com.android.settings" />
+        <package android:name="com.android.dialer" />
+        <package android:name="com.google.android.apps.messaging" />
+        <package android:name="com.google.android.calendar" />
+        <package android:name="com.google.android.apps.photos" />
+        <package android:name="com.android.vending" />
+    </queries>
+
+    <application
+        android:name=".NexusApplication"
+        android:allowBackup="false"
+        android:fullBackupContent="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Nexus"
+        android:usesCleartextTraffic="false">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:theme="@style/Theme.Nexus"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Notification tool: special access granted by the user in
+             system Settings (Settings -> Notification Access), not a
+             manifest <uses-permission>. -->
+        <service
+            android:name=".tools.NexusNotificationListenerService"
+            android:exported="false"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
+    </application>
+</manifest>

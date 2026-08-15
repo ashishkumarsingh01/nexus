@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">NEXUS</string>
+    <string name="status_offline">OFFLINE</string>
+    <string name="status_online">ONLINE</string>
+    <string name="status_model_unavailable">MODEL UNAVAILABLE</string>
+    <string name="greeting">How can I help?</string>
+    <string name="input_hint">Type a message…</string>
+</resources>
