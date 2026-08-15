@@ -1,6 +1,7 @@
 package com.nexus.assistant
 
 import android.app.Application
+import android.util.Log
 import com.nexus.assistant.agent.AgentPlanner
 import com.nexus.assistant.ai.LocalAIEngine
 import com.nexus.assistant.ai.ModelManager
@@ -20,70 +21,130 @@ import com.nexus.assistant.tools.ToolRouter
 import com.nexus.assistant.voice.VoiceSettings
 
 /**
- * Holds app-wide singletons that must outlive any single Activity/ViewModel,
- * so nothing about the assistant depends on UI lifecycle. Deliberately not
- * using a DI framework (Hilt/Koin) — the object graph is small enough that
- * a manual composition root here is simpler to audit for a privacy-focused
- * app, and keeps the dependency list lean for a mobile build.
- *
- * All 12 phases' singletons are composed here. Nothing in this file makes
- * network calls, and nothing here uploads any locally-stored data anywhere.
+ * Application composition root. Initialization is defensive: risky/long-running
+ * components are wrapped in try/catch and left null on failure so the app can
+ * start and surface a graceful UI instead of crashing at cold start.
  */
 class NexusApplication : Application() {
 
-    lateinit var modelManager: ModelManager
+    // Core components may fail to initialize on some devices (native libs,
+    // missing files, DB issues). Keep them nullable and recover gracefully.
+    var modelManager: ModelManager? = null
         private set
-    lateinit var aiEngine: LocalAIEngine
+    var aiEngine: LocalAIEngine? = null
         private set
-    lateinit var memoryRepository: MemoryRepository
+    var memoryRepository: MemoryRepository? = null
         private set
-    lateinit var memorySettings: MemorySettings
+    var memorySettings: MemorySettings? = null
         private set
     lateinit var permissionManager: PermissionManager
         private set
-    lateinit var toolRouter: ToolRouter
+    var toolRouter: ToolRouter? = null
         private set
-    lateinit var agentPlanner: AgentPlanner
+    var agentPlanner: AgentPlanner? = null
         private set
-    lateinit var fileAccessSettings: FileAccessSettings
+    var fileAccessSettings: FileAccessSettings? = null
         private set
-    lateinit var voiceSettings: VoiceSettings
+    var voiceSettings: VoiceSettings? = null
         private set
-    lateinit var onlineSettings: OnlineSettings
+    var onlineSettings: OnlineSettings? = null
         private set
 
     override fun onCreate() {
         super.onCreate()
 
-        modelManager = ModelManager(this)
-        aiEngine = LocalAIEngine(modelManager)
-        memoryRepository = MemoryRepository(MemoryDatabase.getInstance(this))
-        memorySettings = MemorySettings(this)
-        permissionManager = PermissionManager(this)
-        fileAccessSettings = FileAccessSettings(this)
-        voiceSettings = VoiceSettings(this)
-        onlineSettings = OnlineSettings(this)
-
-        toolRouter = ToolRouter(permissionManager).apply {
-            registerAll(
-                DeviceTool(this@NexusApplication),
-                FileTool(this@NexusApplication, fileAccessSettings),
-                AppTool(this@NexusApplication),
-                NotificationTool(this@NexusApplication),
-                CommunicationTool(this@NexusApplication, permissionManager),
-                // Always registered, but internally refuses to do anything
-                // unless OnlineSettings.onlineModeEnabled is explicitly on -
-                // keeps this genuinely optional and independent of the
-                // offline core rather than needing conditional wiring.
-                OnlineTool(this@NexusApplication, onlineSettings)
-            )
+        // Initialize components that are unlikely to fail first.
+        try {
+            permissionManager = PermissionManager(this)
+        } catch (e: Throwable) {
+            Log.e("NexusApplication", "PermissionManager init failed", e)
+            // permissionManager is critical for ToolRouter; if this fails the
+            // rest of tool wiring will be skipped.
         }
 
-        agentPlanner = AgentPlanner(toolRouter, aiEngine)
+        // Model & AI engine (may rely on native libs or files)
+        try {
+            modelManager = ModelManager(this)
+            aiEngine = LocalAIEngine(modelManager!!)
+        } catch (e: Throwable) {
+            Log.e("NexusApplication", "Model/AI initialization failed", e)
+            modelManager = null
+            aiEngine = null
+        }
 
-        // No local model is loaded automatically. NEXUS only loads a model
-        // once one is installed (see Settings -> Import Model), and the UI
-        // reflects real status (ModelStatus.NOT_LOADED / UNAVAILABLE) rather
-        // than pretending readiness.
+        // Memory DB/repository
+        try {
+            memoryRepository = MemoryRepository(MemoryDatabase.getInstance(this))
+        } catch (e: Throwable) {
+            Log.e("NexusApplication", "Memory repository init failed", e)
+            memoryRepository = null
+        }
+
+        try {
+            memorySettings = MemorySettings(this)
+        } catch (e: Throwable) {
+            Log.e("NexusApplication", "MemorySettings init failed", e)
+            memorySettings = null
+        }
+
+        try {
+            fileAccessSettings = FileAccessSettings(this)
+        } catch (e: Throwable) {
+            Log.e("NexusApplication", "FileAccessSettings init failed", e)
+            fileAccessSettings = null
+        }
+
+        try {
+            voiceSettings = VoiceSettings(this)
+        } catch (e: Throwable) {
+            Log.e("NexusApplication", "VoiceSettings init failed", e)
+            voiceSettings = null
+        }
+
+        try {
+            onlineSettings = OnlineSettings(this)
+        } catch (e: Throwable) {
+            Log.e("NexusApplication", "OnlineSettings init failed", e)
+            onlineSettings = null
+        }
+
+        // Tool router and tools - depends on permissionManager; make this tolerant
+        try {
+            // Ensure permissionManager is initialized (constructed) before using
+            if (this::permissionManager.isInitialized) {
+                toolRouter = ToolRouter(permissionManager).apply {
+                    try {
+                        registerAll(
+                            DeviceTool(this@NexusApplication),
+                            FileTool(this@NexusApplication, fileAccessSettings ?: FileAccessSettings(this@NexusApplication)),
+                            AppTool(this@NexusApplication),
+                            NotificationTool(this@NexusApplication),
+                            CommunicationTool(this@NexusApplication, permissionManager),
+                            // OnlineTool respects onlineSettings internally; it's safe to add even if onlineSettings is null
+                            OnlineTool(this@NexusApplication, onlineSettings ?: OnlineSettings(this@NexusApplication))
+                        )
+                    } catch (e: Throwable) {
+                        Log.e("NexusApplication", "One or more tools failed to register", e)
+                    }
+                }
+            } else {
+                Log.e("NexusApplication", "PermissionManager not available; skipping tool wiring")
+            }
+        } catch (e: Throwable) {
+            Log.e("NexusApplication", "ToolRouter initialization failed", e)
+            toolRouter = null
+        }
+
+        // AgentPlanner depends on toolRouter and aiEngine
+        try {
+            agentPlanner = if (toolRouter != null && aiEngine != null) {
+                AgentPlanner(toolRouter!!, aiEngine!!)
+            } else null
+        } catch (e: Throwable) {
+            Log.e("NexusApplication", "AgentPlanner init failed", e)
+            agentPlanner = null
+        }
+
+        // Note: no automatic model loading here. Models are loaded explicitly via UI actions.
     }
 }
