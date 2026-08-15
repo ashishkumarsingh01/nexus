@@ -16,6 +16,7 @@ import com.nexus.assistant.ui.FileAccessScreen
 import com.nexus.assistant.ui.MainScreen
 import com.nexus.assistant.ui.MemoryScreen
 import com.nexus.assistant.ui.NexusViewModelFactory
+import com.nexus.assistant.ui.NexusViewModel
 import com.nexus.assistant.ui.PermissionScreen
 import com.nexus.assistant.ui.SettingsScreen
 import com.nexus.assistant.ui.theme.NexusTheme
@@ -43,7 +44,7 @@ class MainActivity : ComponentActivity() {
                 var isListening by remember { mutableStateOf(false) }
                 var micPermissionDenied by remember { mutableStateOf(false) }
 
-                val viewModel = viewModel(
+                val viewModel = viewModel<NexusViewModel>(
                     factory = NexusViewModelFactory(
                         app.aiEngine, app.modelManager, app.memoryRepository,
                         app.memorySettings, app.toolRouter, app.agentPlanner
